@@ -13,27 +13,27 @@ conn_str = (
 conn = pyodbc.connect(conn_str)
 cursor = conn.cursor()
 
-# Consulta os dados de compras com campos renomeados conforme esperado
+# Consulta os dados com nomes de colunas padronizados
 query = """
 SELECT 
-    [Nro. Único] AS nro_unico,
-    [Nro. Nota] AS nro_nota,
-    [Pendente] AS pendente,
-    [Dt. Neg.] AS data_negociacao,
-    [Dt. de Alteração] AS data_alteracao,
-    [Dt. do Faturamento] AS data_faturamento,
-    [Dt. do Movimento] AS data_movimento,
-    [Dt. Entrada/Saída] AS data_entrada_saida,
-    [Descrição (Tipo de Operação)] AS tipo_operacao,
-    [Tipo de Movimento] AS tipo_movimento,
-    [Nome Parceiro (Parceiro)] AS nome_parceiro,
-    [Descrição (Natureza)] AS natureza,
-    [Descrição (Projeto)] AS projeto,
-    [Aprovado] AS aprovado,
-    [Financeiro] AS financeiro,
-    [Nome (Usuário Alteração)] AS usuario_alteracao,
-    [Vlr. do Frete] AS valor_frete,
-    [Vlr. Nota] AS valor_nota
+    nro_unico,
+    nro_nota,
+    pendente,
+    data_negociacao,
+    data_alteracao,
+    data_faturamento,
+    data_movimento,
+    data_entrada_saida,
+    tipo_operacao,
+    tipo_movimento,
+    nome_parceiro,
+    natureza,
+    projeto,
+    aprovado,
+    financeiro,
+    usuario_alteracao,
+    valor_frete,
+    valor_nota
 FROM nacional_compras
 """
 
