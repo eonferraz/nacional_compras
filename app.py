@@ -1,120 +1,131 @@
-import streamlit as st
 import pandas as pd
 import pyodbc
-from io import BytesIO
 from datetime import datetime
-import base64
+from tqdm import tqdm
 
-st.set_page_config(page_title="Exportar Faturamento", layout="wide")
+# Caminhos
+caminho_entrada = r'C:\\NACIONAL\\COMPRAS.XLSX'
+caminho_erros = r'C:\\NACIONAL\\erros_importacao.xlsx'
+caminho_log = r'C:\\NACIONAL\\log_importacao.txt'
 
-@st.cache_resource
-def carregar_dados():
-    conn_str = (
-        'DRIVER={ODBC Driver 17 for SQL Server};'
-        'SERVER=benu.database.windows.net,1433;'
-        'DATABASE=benu;'
-        'UID=eduardo.ferraz;'
-        'PWD=8h!0+a~jL8]B6~^5s5+v'
-    )
-    conn = pyodbc.connect(conn_str)
-    query = """
-        SELECT
-          numero_nf AS "Número NF",
-          data_negociacao AS "Data Negociação",
-          data_faturamento AS "Data Faturamento",
-          ano_mes AS "Ano-Mês",
-          ano AS "Ano",
-          mes AS "Mês",
-          data_entrada AS "Data Entrada",
-          cod_parceiro AS "Código Parceiro",
-          cod_projeto AS "Código Projeto",
-          abrev_projeto AS "Abrev. Projeto",
-          projeto AS "Projeto",
-          cnpj AS "CNPJ",
-          parceiro AS "Parceiro",
-          cod_top AS "Código TOP",
-          [top] AS "TOP",
-          movimento AS "Movimento",
-          cliente AS "Cliente",
-          fornecedor AS "Fornecedor",
-          codigo AS "Código Produto",
-          descricao AS "Descrição",
-          ncm AS "NCM",
-          grupo AS "Grupo",
-          cfop AS "CFOP",
-          operacao AS "Operação",
-          qtd_negociada AS "Qtd. Negociada",
-          qtd_entregue AS "Qtd. Entregue",
-          status AS "Status",
-          saldo AS "Saldo",
-          valor_unitario AS "Valor Unitário",
-          valor_total AS "Valor Total",
-          valor_icms AS "Valor ICMS",
-          valor_ipi AS "Valor IPI",
-          receita AS "Receita"
-        FROM
-          nacional_faturamento;
-    """
-    df = pd.read_sql(query, conn)
-    conn.close()
-    df['Data Faturamento'] = pd.to_datetime(df['Data Faturamento'], errors='coerce')
-    return df
+# Mapeamento
+mapa_colunas = {
+    'Nro. Único': 'nro_unico',
+    'Nro. Nota': 'nro_nota',
+    'Pendente': 'pendente',
+    'Dt. Neg.': 'data_negociacao',
+    'Dt. de Alteração': 'data_alteracao',
+    'Dt. do Faturamento': 'data_faturamento',
+    'Dt. do Movimento': 'data_movimento',
+    'Dt. Entrada/Saída': 'data_entrada_saida',
+    'Descrição (Tipo de Operação)': 'tipo_operacao',
+    'Tipo de Movimento': 'tipo_movimento',
+    'Nome Parceiro (Parceiro)': 'nome_parceiro',
+    'Descrição (Natureza)': 'natureza',
+    'Descrição (Projeto)': 'projeto',
+    'Aprovado': 'aprovado',
+    'Financeiro': 'financeiro',
+    'Nome (Usuário Alteração)': 'usuario_alteracao',
+    'Vlr. do Frete': 'valor_frete',
+    'Vlr. Nota': 'valor_nota'
+}
 
-# Codifica imagem da logo
-with open("nacional-escuro.svg", "rb") as image_file:
-    encoded = base64.b64encode(image_file.read()).decode()
-logo_img = f"data:image/svg+xml;base64,{encoded}"
+# Leitura
+df = pd.read_excel(caminho_entrada, engine='openpyxl')
+df = df.rename(columns=mapa_colunas)
+colunas_banco = list(mapa_colunas.values())
+df = df[[col for col in colunas_banco if col in df.columns]]
 
-# Header com logo e título alinhados verticalmente ao centro
-st.markdown(f"""
-    <div style='display: flex; align-items: center; gap: 20px;'>
-        <img src='{logo_img}' width='80'>
-        <h1 style='margin: 0;'>Dados de Faturamento</h1>
-    </div>
-""", unsafe_allow_html=True)
+# Validação de datas (com valor padrão 01/01/1900 para campos vazios)
+def validar_data(dt):
+    try:
+        if pd.isnull(dt) or str(dt).strip() == '':
+            return datetime(1900, 1, 1)
+        if isinstance(dt, str):
+            dt = pd.to_datetime(dt, errors='coerce')
+        if isinstance(dt, pd.Timestamp):
+            dt = dt.to_pydatetime()
+        if isinstance(dt, datetime):
+            if datetime(1900, 1, 1) <= dt <= datetime(2079, 6, 6):
+                return dt
+    except Exception:
+        pass
+    return datetime(1900, 1, 1)
 
-# Carrega dados
-original_df = carregar_dados()
+colunas_data = [
+    'data_negociacao',
+    'data_alteracao',
+    'data_faturamento',
+    'data_movimento',
+    'data_entrada_saida'
+]
 
-# Filtros
-st.sidebar.header("Filtros")
-hoje = datetime.today()
-data_inicio = st.sidebar.date_input("Data Inicial", value=datetime(hoje.year, 1, 1))
-data_fim = st.sidebar.date_input("Data Final", value=hoje)
+for col in colunas_data:
+    if col in df.columns:
+        df[col] = df[col].apply(validar_data)
 
-parceiros = original_df['Parceiro'].dropna().unique().tolist()
-operacoes = original_df['Operação'].dropna().unique().tolist()
-
-filtro_parceiro = st.sidebar.multiselect("Parceiro", parceiros)
-filtro_operacao = st.sidebar.multiselect("Operação", operacoes)
-
-# Aplica filtros
-df = original_df.copy()
-df = df[df['Data Faturamento'].notna()]
-df = df[(df['Data Faturamento'] >= pd.to_datetime(data_inicio)) & (df['Data Faturamento'] <= pd.to_datetime(data_fim))]
-if filtro_parceiro:
-    df = df[df['Parceiro'].isin(filtro_parceiro)]
-if filtro_operacao:
-    df = df[df['Operação'].isin(filtro_operacao)]
-
-# Exibe dados
-st.dataframe(df, use_container_width=True)
-
-# Exporta para Excel com ajuste de largura
-buffer = BytesIO()
-with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-    df.to_excel(writer, sheet_name='Faturamento', index=False)
-    workbook = writer.book
-    worksheet = writer.sheets['Faturamento']
-    for i, col in enumerate(df.columns):
-        largura = max(df[col].astype(str).map(len).max(), len(col)) + 2
-        worksheet.set_column(i, i, largura)
-
-nome_arquivo = f"faturamento_filtrado_{datetime.today().strftime('%Y%m%d')}.xlsx"
-
-st.download_button(
-    label="📥 Baixar Excel",
-    data=buffer.getvalue(),
-    file_name=nome_arquivo,
-    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+# Conexão com o banco
+conn_str = (
+    'DRIVER={ODBC Driver 17 for SQL Server};'
+    'SERVER=benu.database.windows.net,1433;'
+    'DATABASE=benu;'
+    'UID=eduardo.ferraz;'
+    'PWD=8h!0+a~jL8]B6~^5s5+v'
 )
+conn = pyodbc.connect(conn_str)
+cursor = conn.cursor()
+
+# Inserção linha a linha com barra de progresso
+erros = []
+sucesso = 0
+
+with open(caminho_log, 'a', encoding='utf-8') as log:
+    log.write(f"\n\n[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Início da importação\n")
+
+    for i, row in tqdm(df.iterrows(), total=len(df), desc='Importando dados', unit='linha'):
+        try:
+            row_dict = row.to_dict()
+            for col in colunas_data:
+                if col in row_dict and not isinstance(row_dict[col], datetime):
+                    row_dict[col] = datetime(1900, 1, 1)
+
+            colunas = ', '.join(row_dict.keys())
+            placeholders = ', '.join(['?'] * len(row_dict))
+            sql = f"INSERT INTO nacional_compras ({colunas}) VALUES ({placeholders})"
+
+            cursor.execute(sql, tuple(row_dict.values()))
+            sucesso += 1
+
+            from tqdm import tqdm
+            tqdm.write(f"[Linha {i+2}] Sucesso")
+            log.write(f"[Linha {i+2}] Sucesso\n")
+
+        except Exception as e:
+            erro_info = row.to_dict()
+            erro_info["erro"] = str(e)
+            erros.append(erro_info)
+            tqdm.write(f"[Linha {i+2}] ERRO: {e}")
+            log.write(f"[Linha {i+2}] ERRO: {e}\n")
+            continue
+
+conn.commit()
+
+# Verifica total de registros no banco após inserção
+cursor.execute("SELECT * FROM nacional_compras")
+qtd_registros = len(cursor.fetchall())
+print(f"Total de registros na tabela: {qtd_registros}")
+
+cursor.close()
+conn.close()
+
+# Exporta erros
+if erros:
+    pd.DataFrame(erros).to_excel(caminho_erros, index=False)
+
+# Finaliza log
+with open(caminho_log, 'a', encoding='utf-8') as log:
+    log.write(f"✅ {sucesso} inserções com sucesso\n")
+    log.write(f"❌ {len(erros)} erros salvos em erros_importacao.xlsx\n")
+    log.write(f"📦 Total atual na tabela nacional_compras: {qtd_registros}\n")
+
+print("✅ Importação finalizada.")
