@@ -2,8 +2,13 @@ import pandas as pd
 import pyodbc
 import streamlit as st
 from datetime import datetime
+from io import BytesIO
 
 st.set_page_config(page_title="Importação de Compras", layout="wide")
+
+# Logo
+st.image("https://raw.githubusercontent.com/seu-usuario/seu-repo/main/logo.png", width=200)
+
 st.title("📦 Visão Geral das Compras")
 
 # Conexão com o banco
@@ -48,6 +53,15 @@ df = pd.read_sql(query, conn)
 cursor.close()
 conn.close()
 
+# Converte datas para dd/mm/yyyy
+colunas_data = [
+    "data_negociacao", "data_alteracao", "data_faturamento",
+    "data_movimento", "data_entrada_saida"
+]
+for col in colunas_data:
+    if col in df.columns:
+        df[col] = pd.to_datetime(df[col], errors='coerce').dt.strftime('%d/%m/%Y')
+
 # Filtros laterais
 with st.sidebar:
     st.header("Filtros")
@@ -61,7 +75,8 @@ if parceiro != "Todos":
 if tipo_mov:
     df = df[df["tipo_movimento"].isin(tipo_mov)]
 if len(periodo) == 2:
-    df = df[(df["data_movimento"] >= pd.to_datetime(periodo[0])) & (df["data_movimento"] <= pd.to_datetime(periodo[1]))]
+    df = df[(pd.to_datetime(df["data_movimento"], dayfirst=True) >= pd.to_datetime(periodo[0])) &
+            (pd.to_datetime(df["data_movimento"], dayfirst=True) <= pd.to_datetime(periodo[1]))]
 
 # Métricas principais
 col1, col2, col3 = st.columns(3)
@@ -72,6 +87,14 @@ col3.metric("Total do frete", f"R$ {df['valor_frete'].sum():,.2f}".replace(",", 
 # Exibe tabela completa
 st.dataframe(df, use_container_width=True)
 
-# Download
-csv = df.to_csv(index=False).encode("utf-8")
-st.download_button("📂 Baixar CSV", csv, "compras_filtradas.csv", "text/csv")
+# Download em Excel
+output = BytesIO()
+with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+    df.to_excel(writer, index=False, sheet_name='Compras')
+    writer.save()
+st.download_button(
+    "📥 Baixar Excel", 
+    output.getvalue(), 
+    file_name="compras_filtradas.xlsx", 
+    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+)
