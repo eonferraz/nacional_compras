@@ -22,27 +22,45 @@ conn_str = (
 conn = pyodbc.connect(conn_str)
 cursor = conn.cursor()
 
-# Consulta os dados com nomes de colunas padronizados
+# Consulta atualizada
 query = """
 SELECT 
-    nro_unico,
-    nro_nota,
-    pendente,
+    numero_nf,
     data_negociacao,
-    data_alteracao,
     data_faturamento,
-    data_movimento,
-    data_entrada_saida,
-    tipo_operacao,
-    tipo_movimento,
-    nome_parceiro,
-    natureza,
+    ano_mes,
+    ano,
+    mes,
+    data_entrada,
+    cod_parceiro,
+    cod_projeto,
+    abrev_projeto,
     projeto,
-    aprovado,
-    financeiro,
-    usuario_alteracao,
-    valor_frete,
-    valor_nota
+    cnpj,
+    parceiro,
+    cod_top,
+    desc_top,
+    movimento,
+    cliente,
+    fornecedor,
+    codigo,
+    descricao,
+    ncm,
+    grupo,
+    cfop,
+    operacao,
+    qtd_negociada,
+    qtd_entregue,
+    status,
+    saldo,
+    valor_unitario,
+    valor_total,
+    valor_icms,
+    valor_ipi,
+    aprovador,
+    data_aprovacao,
+    total_geral,
+    custo_net
 FROM nacional_compras
 """
 
@@ -55,8 +73,7 @@ conn.close()
 
 # Converte datas para dd/mm/yyyy
 colunas_data = [
-    "data_negociacao", "data_alteracao", "data_faturamento",
-    "data_movimento", "data_entrada_saida"
+    "data_negociacao", "data_faturamento", "data_entrada", "data_aprovacao"
 ]
 for col in colunas_data:
     if col in df.columns:
@@ -65,24 +82,27 @@ for col in colunas_data:
 # Filtros laterais
 with st.sidebar:
     st.header("Filtros")
-    parceiro = st.selectbox("Filtrar por parceiro", options=["Todos"] + sorted(df["nome_parceiro"].dropna().unique().tolist()))
-    tipo_mov = st.multiselect("Tipo de movimento", options=sorted(df["tipo_movimento"].dropna().unique().tolist()))
-    periodo = st.date_input("Período (Data do Movimento)", [])
+    parceiro = st.selectbox("Filtrar por parceiro", options=["Todos"] + sorted(df["parceiro"].dropna().unique().tolist()))
+    operacao = st.multiselect("Operação", options=sorted(df["operacao"].dropna().unique().tolist()))
+    periodo = st.date_input("Período (Data de Entrada)", [])
 
 # Aplica os filtros
 if parceiro != "Todos":
-    df = df[df["nome_parceiro"] == parceiro]
-if tipo_mov:
-    df = df[df["tipo_movimento"].isin(tipo_mov)]
+    df = df[df["parceiro"] == parceiro]
+if operacao:
+    df = df[df["operacao"].isin(operacao)]
 if len(periodo) == 2:
-    df = df[(pd.to_datetime(df["data_movimento"], dayfirst=True) >= pd.to_datetime(periodo[0])) &
-            (pd.to_datetime(df["data_movimento"], dayfirst=True) <= pd.to_datetime(periodo[1]))]
+    df = df[
+        (pd.to_datetime(df["data_entrada"], dayfirst=True) >= pd.to_datetime(periodo[0])) &
+        (pd.to_datetime(df["data_entrada"], dayfirst=True) <= pd.to_datetime(periodo[1]))
+    ]
 
 # Métricas principais
-col1, col2, col3 = st.columns(3)
+col1, col2, col3, col4 = st.columns(4)
 col1.metric("Total de registros", len(df))
-col2.metric("Total da nota", f"R$ {df['valor_nota'].sum():,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
-col3.metric("Total do frete", f"R$ {df['valor_frete'].sum():,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+col2.metric("Valor Total (Nota)", f"R$ {df['valor_total'].sum():,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+col3.metric("Total Geral (Nota + IPI)", f"R$ {df['total_geral'].sum():,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+col4.metric("Custo NET (Total - ICMS - IPI)", f"R$ {df['custo_net'].sum():,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
 
 # Exibe tabela completa
 st.dataframe(df, use_container_width=True)
